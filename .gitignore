@@ -1,0 +1,30 @@
+.DS_Store
+.idea/
+.pytest_cache/
+.tools/
+.venv/
+__pycache__/
+*.pyc
+
+# Local sequencing data, generated runs, and bulky reference assets.
+DADA2 databases/
+jobs/*/
+outputs/
+tmp/
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+*.pod5
+*.fasta
+*.fa
+*.fa.gz
+*.fna
+*.fna.gz
+*.bam
+*.sam
+*.cram
+
+# Local database artifacts.
+databases/*.sqlite
+databases/*.sqlite-*

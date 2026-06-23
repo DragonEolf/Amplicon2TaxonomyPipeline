@@ -1,0 +1,20 @@
+job_dir: jobs
+rscript_path: Rscript
+
+markers:
+  16s_v3v4:
+    label: 16S V3V4
+    dada2:
+      truncLen: [0, 0]
+      trimLeft: [0, 0]
+      maxN: 0
+      maxEE: [5, 5]
+      truncQ: 2
+      minOverlap: 12
+    databases:
+      - name: SILVA
+        assign_taxonomy_fasta: "DADA2 databases/silva_nr99_v138.2_toSpecies_trainset.fa.gz"
+      - name: RDP
+        assign_taxonomy_fasta: "DADA2 databases/rdp_19_toSpecies_trainset.fa.gz"
+      - name: Greengenes2
+        assign_taxonomy_fasta: "DADA2 databases/gg2_2024_09_toSpecies_trainset.fa.gz"

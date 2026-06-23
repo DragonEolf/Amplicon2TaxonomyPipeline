@@ -1,0 +1,33 @@
+job_dir: jobs
+rscript_path: Rscript
+
+markers:
+  16s_v3v4:
+    label: 16S V3V4
+    dada2:
+      truncLen: [240, 200]
+      trimLeft: [0, 0]
+      maxN: 0
+      maxEE: [2, 2]
+      truncQ: 2
+      minOverlap: 12
+    databases:
+      - name: SILVA
+        assign_taxonomy_fasta: /path/to/silva_nr99_v138.2_toSpecies_trainset.fa.gz
+      - name: RDP
+        assign_taxonomy_fasta: /path/to/rdp_19_toSpecies_trainset.fa.gz
+      - name: Greengenes2
+        assign_taxonomy_fasta: /path/to/gg2_2024_09_toSpecies_trainset.fa.gz
+
+  its:
+    label: ITS
+    dada2:
+      truncLen: [0, 0]
+      trimLeft: [0, 0]
+      maxN: 0
+      maxEE: [2, 2]
+      truncQ: 2
+      minOverlap: 12
+    databases:
+      - name: UNITE
+        assign_taxonomy_fasta: /path/to/unite_its1.fasta.gz

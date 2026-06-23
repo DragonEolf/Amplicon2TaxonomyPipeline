@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ASV Taxonomy Pipeline</title>
+    <style>
+      body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: #f6f8fb; color: #1f2933; }
+      main { max-width: 760px; margin: 40px auto; padding: 0 20px; }
+      form { background: #fff; border: 1px solid #d9e2ec; border-radius: 8px; padding: 24px; display: grid; gap: 18px; }
+      label { font-weight: 650; display: grid; gap: 8px; }
+      select, input[type="file"] { font: inherit; padding: 10px; border: 1px solid #bcccdc; border-radius: 6px; background: #fff; }
+      button { justify-self: start; border: 0; border-radius: 6px; padding: 11px 16px; background: #2563eb; color: white; font-weight: 700; cursor: pointer; }
+      h1 { margin-bottom: 8px; }
+      p { color: #52606d; }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      @media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>ASV Taxonomy Pipeline</h1>
+      <p>Upload FASTQ reads, or upload a POD5 file to basecall into FASTQ before running DADA2 and ASV classification.</p>
+      <form method="post" action="/jobs" enctype="multipart/form-data">
+        <div class="row">
+          <label>
+            Marker
+            <select name="marker" required>
+              <option value="16s_v3v4">16S V3V4</option>
+              <option value="its">ITS</option>
+            </select>
+          </label>
+          <label>
+            Input format
+            <select name="input_format" required>
+              <option value="fastq">FASTQ</option>
+              <option value="pod5">POD5 to FASTQ</option>
+            </select>
+          </label>
+        </div>
+        <div class="row">
+          <label>
+            Read mode
+            <select name="read_mode" required>
+              <option value="paired">Paired-end</option>
+              <option value="single">Single-end</option>
+            </select>
+          </label>
+        </div>
+        <label>
+          ASV sensitivity
+          <select name="sensitivity_mode" required>
+            <option value="standard">Standard</option>
+            <option value="relaxed">Relaxed (keeps maxN=0)</option>
+          </select>
+        </label>
+        <label>
+          FASTQ R1
+          <input type="file" name="fastq_r1" accept=".fastq,.fq,.gz" required>
+        </label>
+        <label>
+          FASTQ R2
+          <input type="file" name="fastq_r2" accept=".fastq,.fq,.gz">
+        </label>
+        <label>
+          POD5 input
+          <input type="file" name="pod5_file" accept=".pod5">
+        </label>
+        <button type="submit">Start job</button>
+      </form>
+    </main>
+  </body>
+</html>

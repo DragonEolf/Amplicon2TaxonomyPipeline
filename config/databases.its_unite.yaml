@@ -1,0 +1,17 @@
+job_dir: jobs
+rscript_path: Rscript
+
+markers:
+  its:
+    label: ITS
+    dada2:
+      truncLen: [0, 0]
+      trimLeft: [0, 0]
+      maxN: 0
+      maxEE: [2, 2]
+      truncQ: 2
+      minOverlap: 12
+
+    databases:
+      - name: UNITE
+        assign_taxonomy_fasta: "DADA2 databases/sh_general_release_dynamic_all_19.02.2025.fasta"
