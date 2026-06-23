@@ -10,6 +10,7 @@ from pathlib import Path
 
 from taxonomy_pipeline.config import DatabaseConfig, load_config
 from taxonomy_pipeline.models import ASVRecord, Assignment, RANKS, Taxonomy
+from taxonomy_pipeline.reference_matcher import ReferenceMatch, assign_species, find_top_matches, write_matches_csv
 from taxonomy_pipeline.utils import normalize_sequence, parse_fasta
 
 
@@ -33,6 +34,9 @@ OUTPUT_FIELDS = [
     "species",
     "match_type",
     "identity",
+    "nearest_identity",
+    "nearest_species",
+    "nearest_reference",
     "consensus_taxonomy",
 ]
 
@@ -175,8 +179,12 @@ def write_long_csv(
     asvs: list[ASVRecord],
     databases: list[DatabaseConfig],
     assignments: dict[str, dict[str, Assignment]],
+    nearest_matches: dict[str, list[ReferenceMatch]] | None = None,
+    species_assignments: dict[str, str] | None = None,
 ) -> None:
     total_reads = sum(asv.reads for asv in asvs)
+    nearest_matches = nearest_matches or {}
+    species_assignments = species_assignments or {}
     with Path(path).open("wt", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=OUTPUT_FIELDS)
         writer.writeheader()
@@ -184,12 +192,29 @@ def write_long_csv(
             asv_assignments = assignments.get(asv.asv_id, {})
             consensus = compute_consensus(marker, asv_assignments)
             percent = (asv.reads / total_reads * 100) if total_reads else 0.0
+            nearest = first_match(nearest_matches.get(asv.asv_id, []))
             for db in databases:
                 assignment = asv_assignments.get(
                     db.name,
                     Assignment(database=db.name, taxonomy=Taxonomy.empty(), match_type="unclassified"),
                 )
-                writer.writerow(output_row(job_id, asv, percent, marker, db.name, assignment, consensus))
+                writer.writerow(
+                    output_row(
+                        job_id,
+                        asv,
+                        percent,
+                        marker,
+                        db.name,
+                        assignment,
+                        consensus,
+                        nearest,
+                        species_assignments.get(asv.asv_id, ""),
+                    )
+                )
+
+
+def first_match(matches: list[ReferenceMatch]) -> ReferenceMatch | None:
+    return matches[0] if matches else None
 
 
 def output_row(
@@ -200,6 +225,8 @@ def output_row(
     database: str,
     assignment: Assignment,
     consensus: str,
+    nearest: ReferenceMatch | None = None,
+    nearest_species: str = "",
 ) -> dict[str, str]:
     row = {
         "job_id": job_id,
@@ -211,6 +238,9 @@ def output_row(
         "database": database,
         "match_type": assignment.match_type,
         "identity": "" if assignment.identity is None else f"{assignment.identity:.3f}",
+        "nearest_identity": "" if nearest is None else f"{nearest.identity:.3f}",
+        "nearest_species": nearest_species,
+        "nearest_reference": "" if nearest is None else f"{nearest.database}:{nearest.reference_id}",
         "consensus_taxonomy": consensus,
     }
     row.update(assignment.taxonomy.as_dict())
@@ -226,6 +256,8 @@ def classify_from_files(
     job_id: str = "cli",
     work_dir: str | Path = "jobs/cli",
     min_boot: int = 50,
+    matches_csv: str | Path | None = None,
+    top_matches: int = 5,
 ) -> None:
     config = load_config(config_path)
     marker_config = config.markers[marker]
@@ -237,6 +269,11 @@ def classify_from_files(
         work_dir=Path(work_dir) / "assign_taxonomy",
         min_boot=min_boot,
     )
+    reference_paths = [(db.name, db.assign_taxonomy_fasta) for db in marker_config.databases]
+    nearest_matches = find_top_matches(asvs, reference_paths, top_n=top_matches)
+    species_assignments = assign_species(nearest_matches)
+    if matches_csv is not None:
+        write_matches_csv(matches_csv, job_id, nearest_matches)
     write_long_csv(
         output_csv,
         job_id,
@@ -244,6 +281,8 @@ def classify_from_files(
         asvs,
         marker_config.databases,
         assignments,
+        nearest_matches=nearest_matches,
+        species_assignments=species_assignments,
     )
 
 
@@ -254,6 +293,8 @@ def main() -> None:
     parser.add_argument("--asv-fasta", required=True)
     parser.add_argument("--count-table", required=True)
     parser.add_argument("--output-csv", required=True)
+    parser.add_argument("--matches-csv", help="Optional top nearest-reference matches CSV")
+    parser.add_argument("--top-matches", type=int, default=5)
     parser.add_argument("--job-id", default="cli")
     parser.add_argument("--work-dir", default="jobs/cli")
     args = parser.parse_args()
@@ -265,6 +306,8 @@ def main() -> None:
         output_csv=args.output_csv,
         job_id=args.job_id,
         work_dir=args.work_dir,
+        matches_csv=args.matches_csv,
+        top_matches=args.top_matches,
     )
 
 

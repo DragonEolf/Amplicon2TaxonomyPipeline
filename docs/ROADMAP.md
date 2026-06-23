@@ -9,6 +9,7 @@ is making each taxonomic call easier to verify.
 
 ## Priority 1: Closest-Match Validation
 
+- Status: implemented as `closest_matches.csv`.
 - Search each ASV against the configured reference FASTA files.
 - Report the top 5 closest matches per ASV.
 - Include percent identity, mismatch count, database name, reference header, and
@@ -26,13 +27,18 @@ is making each taxonomic call easier to verify.
 
 ## Priority 3: Multi-Sample Summary
 
+- Status: implemented with `scripts/build_multi_sample_summary.py` and web
+  downloads under `/summaries/`.
 - Aggregate multiple completed jobs into one sample-by-ASV and sample-by-taxon
   table.
 - Keep ASV sequence as the stable join key across samples.
-- Add per-sample totals, relative abundance, and contaminant flags.
+- Add per-sample totals and relative abundance columns.
+- Contaminant flags belong with the NTC background-control work.
 
 ## Priority 4: Report And Visualization Upgrades
 
+- Status: nearest-match PDF evidence and automatic report generation are
+  implemented.
 - Extend the PDF report with closest-match evidence and NTC flags.
 - Add interactive taxonomy visualizations such as Krona after the classification
   evidence is richer.

@@ -15,8 +15,10 @@ from starlette.requests import Request
 
 from asv_classifier import classify_from_files
 from dada2_runner import run_dada2, write_manifest
+from generate_genepath_report import generate_report_from_csv
 from pod5_converter import convert_pod5_to_fastq
 from taxonomy_pipeline.config import load_config
+from taxonomy_pipeline.multi_sample import discover_taxonomy_csvs, write_multi_sample_tables
 from taxonomy_pipeline.utils import ensure_directory, safe_filename
 
 
@@ -123,6 +125,20 @@ def download(job_id: str, filename: str):
     if outputs_dir not in candidate.parents or not candidate.exists():
         raise HTTPException(status_code=404, detail="Output file not found")
     return FileResponse(candidate, filename=filename)
+
+
+@app.get("/summaries/{filename}")
+def download_summary(filename: str):
+    if filename not in {"asv_sample_matrix.csv", "taxon_sample_matrix.csv"}:
+        raise HTTPException(status_code=404, detail="Summary not found")
+    output_dir = ensure_directory(APP_ROOT / "outputs")
+    asv_output = output_dir / "asv_sample_matrix.csv"
+    taxon_output = output_dir / "taxon_sample_matrix.csv"
+    taxonomy_csvs = discover_taxonomy_csvs(load_config(MARKER_CONFIGS["16s_v3v4"]).job_dir)
+    if not taxonomy_csvs:
+        raise HTTPException(status_code=404, detail="No completed taxonomy outputs found")
+    write_multi_sample_tables(taxonomy_csvs, asv_output=asv_output, taxon_output=taxon_output)
+    return FileResponse(output_dir / filename, filename=filename)
 
 
 def config_path_for_marker(marker: str) -> Path | None:
@@ -233,6 +249,16 @@ def run_pipeline_job(
             job_id=job_id,
             work_dir=job_dir / "tmp",
             min_boot=0,
+            matches_csv=output_dir / "closest_matches.csv",
+        )
+        write_status(job_dir, state="running", message="Generating PDF report", job_id=job_id)
+        generate_report_from_csv(
+            output_dir / "taxonomy_long.csv",
+            output=output_dir / "genepath_report.pdf",
+            sample=job_id,
+            database="consensus",
+            min_bootstrap=0,
+            matches_csv=output_dir / "closest_matches.csv",
         )
         write_status(job_dir, state="completed", message="Job completed", job_id=job_id)
     except Exception as exc:

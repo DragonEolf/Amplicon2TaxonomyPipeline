@@ -60,16 +60,38 @@ KNOWN_TAXON_COLORS = {
 
 def main() -> None:
     args = parse_args()
-    rows = read_rows(args.csv)
-    records = collapse_asv_records(rows, database=args.database, min_bootstrap=args.min_bootstrap)
+    generate_report_from_csv(
+        args.csv,
+        output=args.output,
+        sample=args.sample,
+        database=args.database,
+        min_bootstrap=args.min_bootstrap,
+        title=args.title,
+        matches_csv=args.matches_csv,
+    )
+
+
+def generate_report_from_csv(
+    csv_path: Path,
+    output: Path | None = None,
+    sample: str | None = None,
+    database: str = "SILVA",
+    min_bootstrap: float = 50.0,
+    title: str = "16S Metagenomics Report",
+    matches_csv: Path | None = None,
+) -> Path:
+    rows = read_rows(csv_path)
+    records = collapse_asv_records(rows, database=database, min_bootstrap=min_bootstrap)
     if not records:
         raise SystemExit("No ASV records found in the CSV.")
 
-    sample_id = args.sample or infer_sample_id(records, args.csv)
-    output = args.output or args.csv.with_suffix(".genepath_report.pdf")
+    sample_id = sample or infer_sample_id(records, csv_path)
+    output = output or csv_path.with_suffix(".genepath_report.pdf")
     report = build_report_data(records)
-    draw_report(output, sample_id, report, args.title)
+    matches = read_matches(matches_csv) if matches_csv else []
+    draw_report(output, sample_id, report, title, matches=matches)
     print(f"Wrote {output}")
+    return output
 
 
 def parse_args() -> argparse.Namespace:
@@ -91,10 +113,18 @@ def parse_args() -> argparse.Namespace:
         help="Minimum bootstrap confidence to report a taxonomic rank. Lower ranks are blanked after the first failed rank. Default: 50",
     )
     parser.add_argument("--title", default="16S Metagenomics Report", help="Report title")
+    parser.add_argument("--matches-csv", type=Path, help="Optional closest_matches.csv from the classifier")
     return parser.parse_args()
 
 
 def read_rows(path: Path) -> list[dict[str, str]]:
+    with path.open("rt", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def read_matches(path: Path) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
     with path.open("rt", newline="") as handle:
         return list(csv.DictReader(handle))
 
@@ -225,15 +255,25 @@ def percent(part: int, whole: int) -> float:
     return (part / whole * 100.0) if whole else 0.0
 
 
-def draw_report(output: Path, sample_id: str, report: dict[str, object], title: str) -> None:
+def draw_report(
+    output: Path,
+    sample_id: str,
+    report: dict[str, object],
+    title: str,
+    matches: list[dict[str, str]] | None = None,
+) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     c = canvas.Canvas(str(output), pagesize=letter)
 
     draw_cover(c, sample_id, title)
     draw_summary_page(c, sample_id, report, title)
-    draw_kingdom_page(c, report, title)
+    next_page = 3
+    if matches:
+        draw_match_evidence_page(c, matches, title, next_page)
+        next_page += 1
+    draw_kingdom_page(c, report, title, next_page)
     for rank in RANKS[1:]:
-        draw_rank_page(c, report, rank, title)
+        draw_rank_page(c, report, rank, title, next_page)
     c.save()
 
 
@@ -301,20 +341,56 @@ def draw_summary_page(c: canvas.Canvas, sample_id: str, report: dict[str, object
     c.showPage()
 
 
-def draw_kingdom_page(c: canvas.Canvas, report: dict[str, object], title: str) -> None:
-    header(c, title, 3)
+def draw_kingdom_page(c: canvas.Canvas, report: dict[str, object], title: str, page: int = 3) -> None:
+    header(c, title, page)
     section_title(c, "Classification Results by Taxonomic Level", 700)
     c.setFont("Helvetica", 10)
     c.setFillColor(DARK)
     c.drawString(72, 675, "Tables show the highest 8 taxonomic classifications at each level.")
     c.drawString(72, 660, "Charts show dominant classifications; smaller and tail categories are grouped as Other.")
     draw_rank_body(c, report, "kingdom", 620)
-    footer(c, 3)
+    footer(c, page)
     c.showPage()
 
 
-def draw_rank_page(c: canvas.Canvas, report: dict[str, object], rank: str, title: str) -> None:
-    page = RANKS.index(rank) + 3
+def draw_match_evidence_page(c: canvas.Canvas, matches: list[dict[str, str]], title: str, page: int) -> None:
+    header(c, title, page)
+    section_title(c, "Nearest Reference Evidence", 700)
+    c.setFont("Helvetica", 10)
+    c.setFillColor(DARK)
+    c.drawString(72, 675, "Top-ranked reference matches provide identity evidence for ASV-level calls.")
+
+    best_by_asv = {}
+    for match in matches:
+        if match.get("rank") == "1" and match.get("asv_id") not in best_by_asv:
+            best_by_asv[match.get("asv_id", "")] = match
+
+    table_rows = [["ASV", "Database", "Identity", "Species", "Reference"]]
+    ordered = sorted(
+        best_by_asv.values(),
+        key=lambda row: (-float(row.get("identity") or 0), row.get("asv_id", "")),
+    )
+    for match in ordered[:18]:
+        table_rows.append(
+            [
+                match.get("asv_id", ""),
+                match.get("database", ""),
+                f"{float(match.get('identity') or 0):.2f} %",
+                match.get("species", ""),
+                match.get("reference_id", ""),
+            ]
+        )
+
+    draw_table(c, table_rows, 72, 635, [80, 82, 72, 155, 100], row_h=23, header_fill=BRAND_BLUE)
+    c.setFont("Helvetica", 8.5)
+    c.setFillColor(BRAND_GRAY)
+    c.drawString(72, 84, "Full top-5 evidence is available in closest_matches.csv.")
+    footer(c, page)
+    c.showPage()
+
+
+def draw_rank_page(c: canvas.Canvas, report: dict[str, object], rank: str, title: str, page_offset: int = 3) -> None:
+    page = RANKS.index(rank) + page_offset
     header(c, title, page)
     draw_rank_body(c, report, rank, 690)
     footer(c, page)

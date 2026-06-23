@@ -25,6 +25,10 @@ Set `DORADO_BIN` to the Dorado executable path and `DORADO_MODEL` to a different
 
 For 16S, the classifier runs DADA2 `assignTaxonomy` once per configured trainset and writes one long-format row per ASV/database. The default 16S goal is three rows per ASV: SILVA, RDP, and Greengenes2.
 
+The classifier also writes nearest-reference evidence when `--matches-csv` is
+provided. This top-5 match table includes percent identity, mismatch count,
+reference ID, parsed species, and reference taxonomy for each ASV.
+
 ## Run The Web App
 
 ```bash
@@ -42,7 +46,37 @@ python3 asv_classifier.py \
   --marker 16s_v3v4 \
   --asv-fasta outputs/asvs.fasta \
   --count-table outputs/asv_counts.csv \
-  --output-csv outputs/taxonomy_long.csv
+  --output-csv outputs/taxonomy_long.csv \
+  --matches-csv outputs/closest_matches.csv
 ```
 
 The output is long format only: one ASV/database row.
+
+## Generate A PDF Report
+
+```bash
+python3 generate_genepath_report.py \
+  outputs/taxonomy_long.csv \
+  --matches-csv outputs/closest_matches.csv \
+  --database consensus \
+  --output outputs/genepath_report.pdf
+```
+
+When `closest_matches.csv` is provided, the report includes a nearest-reference
+evidence page.
+
+## Build Multi-Sample Matrices
+
+```bash
+python3 scripts/build_multi_sample_summary.py \
+  --job-root jobs \
+  --asv-output outputs/asv_sample_matrix.csv \
+  --taxon-output outputs/taxon_sample_matrix.csv \
+  --database consensus \
+  --rank genus
+```
+
+The ASV matrix uses ASV sequence IDs as stable rows across samples. The taxon
+matrix aggregates reads by the selected taxonomic rank. Both matrices include
+read-count columns and matching relative-abundance percent columns for each
+sample.
