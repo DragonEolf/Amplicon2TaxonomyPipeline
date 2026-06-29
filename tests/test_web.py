@@ -4,7 +4,15 @@ from datetime import datetime
 
 from fastapi.testclient import TestClient
 
-from web_app import app, build_job_id, dada2_params_for_mode, r1_prefix, upload_filename_for_job
+from web_app import (
+    app,
+    build_job_id,
+    dada2_params_for_mode,
+    generate_pdf_report,
+    pod5_failure_message,
+    r1_prefix,
+    upload_filename_for_job,
+)
 
 
 def test_index_renders_upload_form():
@@ -108,3 +116,28 @@ def test_pod5_mode_requires_single_end():
 
     assert response.status_code == 400
     assert response.json()["detail"] == "POD5 input currently runs as single-end after FASTQ conversion"
+
+
+def test_pod5_missing_basecaller_has_friendly_message():
+    message = pod5_failure_message(FileNotFoundError("POD5 basecaller executable 'dorado' was not found."))
+
+    assert message == "Failed because the POD5 basecaller was not found. Install Dorado or set DORADO_BIN."
+
+
+def test_generate_pdf_report_writes_pdf(tmp_path):
+    taxonomy_csv = tmp_path / "taxonomy_long.csv"
+    taxonomy_csv.write_text(
+        "\n".join(
+            [
+                "job_id,asv_id,sequence,reads,percent_abundance,marker,database,kingdom,phylum,class,order,family,genus,species,match_type,identity,consensus_taxonomy",
+                "job1,ASV_1,ACGT,100,100.000000,16s_v3v4,SILVA,Bacteria (100),Firmicutes (99),Bacilli (98),Lactobacillales (97),Lactobacillaceae (96),Lactobacillus (95),,assign_taxonomy,,Bacteria;Firmicutes;Bacilli",
+            ]
+        )
+        + "\n"
+    )
+    output_pdf = tmp_path / "genepath_report.pdf"
+
+    generate_pdf_report(taxonomy_csv, output_pdf, "job1", "16s_v3v4")
+
+    assert output_pdf.exists()
+    assert output_pdf.read_bytes().startswith(b"%PDF")

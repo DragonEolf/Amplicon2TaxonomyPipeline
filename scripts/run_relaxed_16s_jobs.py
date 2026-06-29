@@ -17,7 +17,7 @@ from taxonomy_pipeline.utils import ensure_directory, safe_filename
 from web_app import DADA2_SCRIPT, dada2_params_for_mode, write_status
 
 
-CONFIG_PATH = APP_ROOT / "config" / "databases.16s_two_db.yaml"
+CONFIG_PATH = APP_ROOT / "config" / "databases.16s_three_db.yaml"
 STAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 

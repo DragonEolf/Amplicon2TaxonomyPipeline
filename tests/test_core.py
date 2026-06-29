@@ -3,7 +3,10 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+import pytest
+
 from asv_classifier import compute_consensus, read_asvs, write_long_csv
+from pipeline_errors import PipelineError, dada2_failure_message, ensure_asv_outputs
 from taxonomy_pipeline.config import DatabaseConfig, load_config
 from taxonomy_pipeline.models import ASVRecord, Assignment, Taxonomy
 from taxonomy_pipeline.utils import normalize_sequence, parse_fasta
@@ -29,6 +32,28 @@ def test_read_asvs_accepts_asv_id_count_table(tmp_path):
     asvs = read_asvs(fasta, counts)
 
     assert asvs == [ASVRecord("ASV_1", "ACGT", 12), ASVRecord("ASV_2", "TTTT", 3)]
+
+
+def test_empty_asv_fasta_fails_with_friendly_message(tmp_path):
+    fasta = tmp_path / "asvs.fasta"
+    counts = tmp_path / "counts.csv"
+    fasta.write_text("")
+    counts.write_text("asv_id,reads,sequence\n")
+
+    with pytest.raises(PipelineError, match="no ASVs were produced"):
+        ensure_asv_outputs(fasta, counts)
+
+
+def test_dada2_filter_failure_message_mentions_quality_and_n_bases(tmp_path):
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    log = output_dir / "dada2.log"
+    log.write_text("Error in filterAndTrim(...): No reads passed the filter")
+
+    message = dada2_failure_message(log, output_dir)
+
+    assert "no reads passed DADA2 filtering" in message
+    assert "N bases" in message
 
 
 def test_consensus_requires_two_database_agreement_for_16s():

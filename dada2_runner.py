@@ -5,6 +5,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from pipeline_errors import PipelineError, dada2_failure_message
+
 
 def write_manifest(
     path: str | Path,
@@ -38,12 +40,21 @@ def run_dada2(
     manifest_path: str | Path,
     log_path: str | Path,
 ) -> None:
+    manifest = json.loads(Path(manifest_path).read_text())
+    output_dir = manifest.get("output_dir", Path(log_path).parent)
     with Path(log_path).open("wt") as log_handle:
-        subprocess.run(
-            [rscript_path, str(script_path), str(manifest_path)],
-            check=True,
-            stdout=log_handle,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-
+        try:
+            subprocess.run(
+                [rscript_path, str(script_path), str(manifest_path)],
+                check=True,
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+        except FileNotFoundError as exc:
+            raise PipelineError(
+                "Failed because Rscript was not found. Install R or set rscript_path in the pipeline config.",
+                detail=str(exc),
+            ) from exc
+        except subprocess.CalledProcessError as exc:
+            raise PipelineError(dada2_failure_message(log_path, output_dir), detail=str(exc)) from exc
