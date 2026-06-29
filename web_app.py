@@ -15,6 +15,8 @@ from starlette.requests import Request
 
 from asv_classifier import classify_from_files
 from dada2_runner import run_dada2, write_manifest
+from generate_genepath_report import build_report_data, collapse_asv_records, draw_report, read_rows
+from pipeline_errors import PipelineError, classify_failure_message, friendly_exception_message
 from pod5_converter import convert_pod5_to_fastq
 from taxonomy_pipeline.config import load_config
 from taxonomy_pipeline.utils import ensure_directory, safe_filename
@@ -22,7 +24,7 @@ from taxonomy_pipeline.utils import ensure_directory, safe_filename
 
 APP_ROOT = Path(__file__).resolve().parent
 MARKER_CONFIGS = {
-    "16s_v3v4": APP_ROOT / "config" / "databases.16s_two_db.yaml",
+    "16s_v3v4": APP_ROOT / "config" / "databases.16s_three_db.yaml",
     "its": APP_ROOT / "config" / "databases.its_unite.yaml",
 }
 DADA2_SCRIPT = APP_ROOT / "scripts" / "dada2_pipeline.R"
@@ -203,13 +205,16 @@ def run_pipeline_job(
         marker_config = config.markers[marker]
         if input_format == "pod5":
             if pod5_path is None:
-                raise ValueError("POD5 input was selected but no POD5 file was saved.")
+                raise PipelineError("Failed because POD5 input was selected but no POD5 file was saved.")
             write_status(job_dir, state="running", message="Basecalling POD5 to FASTQ", job_id=job_id)
-            convert_pod5_to_fastq(
-                pod5_path=pod5_path,
-                output_fastq=r1_path,
-                log_path=output_dir / "pod5_to_fastq.log",
-            )
+            try:
+                convert_pod5_to_fastq(
+                    pod5_path=pod5_path,
+                    output_fastq=r1_path,
+                    log_path=output_dir / "pod5_to_fastq.log",
+                )
+            except Exception as exc:
+                raise PipelineError(pod5_failure_message(exc), detail=str(exc)) from exc
 
         write_status(job_dir, state="running", message="Running DADA2", job_id=job_id)
         manifest_path = write_manifest(
@@ -224,21 +229,37 @@ def run_pipeline_job(
         run_dada2(config.rscript_path, DADA2_SCRIPT, manifest_path, output_dir / "dada2.log")
 
         write_status(job_dir, state="running", message="Classifying ASVs", job_id=job_id)
-        classify_from_files(
-            config_path=config_path,
-            marker=marker,
-            asv_fasta=output_dir / "asvs.fasta",
-            count_table=output_dir / "asv_counts.csv",
-            output_csv=output_dir / "taxonomy_long.csv",
-            job_id=job_id,
-            work_dir=job_dir / "tmp",
-            min_boot=0,
-        )
+        asv_fasta = output_dir / "asvs.fasta"
+        count_table = output_dir / "asv_counts.csv"
+        try:
+            taxonomy_csv = output_dir / "taxonomy_long.csv"
+            classify_from_files(
+                config_path=config_path,
+                marker=marker,
+                asv_fasta=asv_fasta,
+                count_table=count_table,
+                output_csv=taxonomy_csv,
+                job_id=job_id,
+                work_dir=job_dir / "tmp",
+                min_boot=0,
+            )
+            generate_pdf_report(taxonomy_csv, output_dir / "genepath_report.pdf", job_id, marker)
+        except Exception as exc:
+            raise PipelineError(classify_failure_message(exc, asv_fasta, count_table), detail=str(exc)) from exc
         write_status(job_dir, state="completed", message="Job completed", job_id=job_id)
     except Exception as exc:
         output_dir = ensure_directory(job_dir / "outputs")
         (output_dir / "error.log").write_text(traceback.format_exc())
-        write_status(job_dir, state="failed", message=str(exc), job_id=job_id)
+        write_status(job_dir, state="failed", message=friendly_exception_message(exc), job_id=job_id)
+
+
+def pod5_failure_message(exc: BaseException) -> str:
+    if isinstance(exc, FileNotFoundError):
+        text = str(exc)
+        if "basecaller executable" in text or "Dorado" in text:
+            return "Failed because the POD5 basecaller was not found. Install Dorado or set DORADO_BIN."
+        return "Failed because the POD5 input file was not found."
+    return "Failed while converting POD5 to FASTQ. See outputs/pod5_to_fastq.log for technical details."
 
 
 def dada2_params_for_mode(base_params: dict[str, Any], sensitivity_mode: str) -> dict[str, Any]:
@@ -264,6 +285,17 @@ def dada2_params_for_mode(base_params: dict[str, Any], sensitivity_mode: str) ->
     params["nbases"] = 1e4
     params["chimeraMethod"] = "consensus"
     return params
+
+
+def generate_pdf_report(taxonomy_csv: Path, output_pdf: Path, sample_id: str, marker: str) -> None:
+    database = "UNITE" if marker == "its" else "consensus"
+    title = "ITS Metagenomics Report" if marker == "its" else "16S Metagenomics Report"
+    rows = read_rows(taxonomy_csv)
+    records = collapse_asv_records(rows, database=database, min_bootstrap=50.0)
+    if not records:
+        raise PipelineError("Failed because no taxonomy rows were available for the PDF report.")
+    report = build_report_data(records)
+    draw_report(output_pdf, sample_id, report, title)
 
 
 def write_status(job_dir: Path, state: str, message: str, job_id: str) -> None:

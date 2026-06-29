@@ -8,6 +8,7 @@ import subprocess
 from collections import defaultdict
 from pathlib import Path
 
+from pipeline_errors import PipelineError, ensure_asv_outputs
 from taxonomy_pipeline.config import DatabaseConfig, load_config
 from taxonomy_pipeline.models import ASVRecord, Assignment, RANKS, Taxonomy
 from taxonomy_pipeline.utils import normalize_sequence, parse_fasta
@@ -69,6 +70,8 @@ def read_asvs(fasta_path: str | Path, count_table_path: str | Path) -> list[ASVR
         if reads is None:
             reads = counts.get(sequence, 0)
         records.append(ASVRecord(asv_id=asv_id, sequence=normalize_sequence(sequence), reads=reads))
+    if not records:
+        raise PipelineError("Failed because no ASVs were produced.")
     return records
 
 
@@ -229,6 +232,7 @@ def classify_from_files(
 ) -> None:
     config = load_config(config_path)
     marker_config = config.markers[marker]
+    ensure_asv_outputs(asv_fasta, count_table)
     asvs = read_asvs(asv_fasta, count_table)
     assignments = run_assign_taxonomy(
         asv_fasta=asv_fasta,
