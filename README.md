@@ -4,6 +4,8 @@ A local web app and command-line pipeline for DADA2-based amplicon taxonomy anal
 
 The app accepts FASTQ uploads for 16S V3V4 or ITS, runs DADA2, assigns taxonomy against configured reference databases, writes CSV outputs, and generates a downloadable GenePath-style PDF report.
 
+For a short copyable setup guide, see [How To Use This Pipeline](docs/how-to-use-pipeline.md).
+
 ## What It Produces
 
 Each completed job writes outputs under `jobs/<job_id>/outputs/`:
